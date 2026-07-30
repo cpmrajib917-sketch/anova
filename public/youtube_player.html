@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnOvA YouTube Player</title>
+    <!-- Plyr CSS -->
+    <link rel="stylesheet" href="plyr.css" />
+    <style>
+        /* Modern Dark Theme Variables matching AnOvA UI */
+        :root {
+            --plyr-color-main: #00e5ff; /* Cyan accent matching AnOvA theme */
+            --plyr-video-background: #000;
+            --plyr-menu-background: rgba(1, 3, 7, 0.95);
+            --plyr-menu-color: #fff;
+            --plyr-menu-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            --plyr-font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            --plyr-control-icon-size: 18px;
+            --plyr-control-spacing: 10px;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        /* Plyr Customization */
+        .plyr--full-ui input[type=range] {
+            color: var(--plyr-color-main);
+        }
+
+        /* Center overlaid play/pause button styling */
+        .plyr__control--overlaid {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.75) !important;
+            border: 2px solid rgba(0, 229, 255, 0.6) !important;
+            color: #ffffff !important;
+            border-radius: 50% !important;
+            width: 64px !important;
+            height: 64px !important;
+            padding: 0 !important;
+            box-shadow: 0 0 25px rgba(0, 229, 255, 0.4) !important;
+            transition: transform 0.2s ease, background-color 0.2s ease, opacity 0.3s ease !important;
+            cursor: pointer !important;
+            z-index: 20 !important;
+            pointer-events: auto !important;
+        }
+
+        .plyr__control--overlaid:hover {
+            background: rgba(0, 229, 255, 0.9) !important;
+            border-color: #00e5ff !important;
+            color: #000000 !important;
+            transform: translate(-50%, -50%) scale(1.1) !important;
+            box-shadow: 0 0 35px rgba(0, 229, 255, 0.8) !important;
+        }
+
+        .plyr__control--overlaid svg {
+            width: 24px !important;
+            height: 24px !important;
+            fill: currentColor !important;
+        }
+
+        /* Hide center overlaid button when controls fade out during playback */
+        .plyr--hide-controls .plyr__control--overlaid {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        .plyr--video .plyr__controls {
+            background: linear-gradient(rgba(0, 0, 0, 0), rgba(1, 3, 7, 0.95));
+            border-bottom-left-radius: inherit;
+            border-bottom-right-radius: inherit;
+        }
+
+        /* Strict CSS to hide YouTube Branding - scales/crops the inner iframe */
+        .plyr__video-wrapper iframe, .plyr__video-embed iframe, .plyr iframe {
+            top: -50% !important;
+            height: 200% !important;
+            position: absolute;
+            left: 0;
+            width: 100%;
+            pointer-events: none !important;
+            opacity: 0 !important;
+            transition: opacity 0.25s ease;
+        }
+
+        /* Show iframe ONLY when actively playing */
+        .plyr.is-playing .plyr__video-wrapper iframe,
+        .plyr.is-playing .plyr__video-embed iframe,
+        .plyr.is-playing .plyr iframe {
+            opacity: 1 !important;
+        }
+
+        .plyr__video-wrapper {
+            overflow: hidden;
+            border-radius: 0px;
+            box-shadow: none;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .plyr {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* Ensure error fallback keeps the clean look and hides YouTube iframe overlay */
+        .plyr.has-error .plyr__video-wrapper iframe,
+        .plyr.has-error .plyr__video-embed iframe,
+        .plyr.has-error .plyr iframe {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Plyr Player Container -->
+    <div id="player-wrapper" style="width:100%; height:100%; overflow:hidden;">
+        <div id="player" data-plyr-provider="youtube" data-plyr-embed-id=""></div>
+    </div>
+
+    <script src="plyr.js"></script>
+    <script>
+        // Parse URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        let videoId = urlParams.get('id') || '';
+        const autoplay = urlParams.get('autoplay') === 'true';
+
+        // Dynamically set the YouTube Embed ID on the div before initializing
+        const playerDiv = document.getElementById('player');
+        if (videoId) {
+            playerDiv.setAttribute('data-plyr-embed-id', videoId);
+        } else {
+            // Placeholder video ID to prevent initialization failure
+            playerDiv.setAttribute('data-plyr-embed-id', 'Oke5OqwRFeM');
+        }
+
+        const player = new Plyr('#player', {
+            iconUrl: 'plyr.svg',
+            controls: [
+                'restart', // Restart playback
+                'rewind', // Rewind by the seek time (default 10 seconds)
+                'play', // Play/pause playback
+                'fast-forward', // Fast forward by the seek time (default 10 seconds)
+                'progress', // The progress bar and scrubber for playback and buffering
+                'current-time', // The current time of playback
+                'duration', // The full duration of the media
+                'mute', // Toggle mute
+                'volume', // Volume control
+                'settings', // Settings menu
+                'pip', // Picture-in-picture
+                'fullscreen', // Toggle fullscreen
+            ],
+            // Default settings to show in the menu
+            settings: ['quality', 'speed', 'loop'],
+            // Speed options
+            speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+            // Quality options
+            quality: {
+                default: 1080,
+                options: [4320, 2880, 2160, 1440, 1080, 720, 480, 360, 240]
+            },
+            keyboard: { focused: true, global: true },
+            tooltips: { controls: true, seek: true },
+            clickToPlay: true,
+            autopause: true,
+            resetOnEnd: false,
+            invertTime: true,
+            toggleInvert: true,
+            disableContextMenu: true,
+            ratio: '16:9',
+            youtube: {
+                noCookie: true, // Uses youtube-nocookie.com to bypass standard cookie block and some embeds
+                rel: 0,
+                showinfo: 0,
+                iv_load_policy: 3,
+                modestbranding: 1,
+                controls: 0,
+                fs: 0,
+                autoplay: autoplay ? 1 : 0,
+                mute: autoplay ? 1 : 0,
+                enablejsapi: 1,
+                playsinline: 1
+            }
+        });
+
+        // Function to update background thumbnail poster
+        function updatePoster(id) {
+            const container = player.elements.container;
+            if (container && id) {
+                container.style.backgroundImage = `url('https://img.youtube.com/vi/${id}/hqdefault.jpg')`;
+                container.style.backgroundSize = 'cover';
+                container.style.backgroundPosition = 'center';
+            }
+        }
+
+        // Setup user gesture listener for restoring full unmuted sound
+        function setupUserUnmuteListeners() {
+            const unmute = () => {
+                try {
+                    if (player.embed && typeof player.embed.unMute === 'function') {
+                        player.embed.unMute();
+                    }
+                    player.muted = false;
+                } catch (e) {}
+            };
+            window.addEventListener('click', unmute, { once: true });
+            window.addEventListener('touchstart', unmute, { once: true });
+            window.addEventListener('keydown', unmute, { once: true });
+        }
+        setupUserUnmuteListeners();
+
+        let stuckRetryTimer = null;
+        let retryCount = 0;
+        const MAX_RETRIES = 4;
+
+        function setPlayingState(playing) {
+            const container = player.elements.container;
+            if (container) {
+                if (playing) {
+                    container.classList.add('is-playing');
+                    container.classList.add('has-played');
+                    container.classList.remove('has-error');
+                } else {
+                    container.classList.remove('is-playing');
+                }
+            }
+        }
+
+        function clearStuckRetryTimer() {
+            if (stuckRetryTimer) {
+                clearInterval(stuckRetryTimer);
+                stuckRetryTimer = null;
+            }
+        }
+
+        function executeAutoplay() {
+            clearStuckRetryTimer();
+            retryCount = 0;
+
+            const container = player.elements.container;
+            if (container) {
+                container.classList.remove('has-error');
+                container.classList.remove('is-playing');
+            }
+
+            const attemptPlay = () => {
+                // Ensure muted first to satisfy browser autoplay policies
+                try {
+                    player.muted = true;
+                    if (player.embed && typeof player.embed.mute === 'function') {
+                        player.embed.mute();
+                    }
+                } catch (e) {}
+
+                // Try direct YouTube API playVideo call first
+                try {
+                    if (player.embed && typeof player.embed.playVideo === 'function') {
+                        player.embed.playVideo();
+                    }
+                } catch (e) {}
+
+                // Try Plyr play call as fallback
+                try {
+                    const playPromise = player.play();
+                    if (playPromise && typeof playPromise.catch === 'function') {
+                        playPromise.catch(() => {
+                            try {
+                                if (player.embed && typeof player.embed.playVideo === 'function') {
+                                    player.embed.playVideo();
+                                }
+                            } catch (e) {}
+                        });
+                    }
+                } catch (e) {}
+            };
+
+            attemptPlay();
+
+            // Watchdog timer: checks every 2s if video is playing or advancing
+            stuckRetryTimer = setInterval(() => {
+                const ytState = (player.embed && typeof player.embed.getPlayerState === 'function') ? player.embed.getPlayerState() : -1;
+                const curTime = player.currentTime || 0;
+
+                // Success condition: video reaches PLAYING state or time is progressing
+                if (ytState === 1 && curTime > 0) {
+                    clearStuckRetryTimer();
+                    setPlayingState(true);
+                    return;
+                }
+
+                retryCount++;
+                console.log(`[Autoplay Watchdog] Video stuck (State: ${ytState}, Time: ${curTime}). Retry ${retryCount}/${MAX_RETRIES}`);
+
+                if (retryCount <= MAX_RETRIES) {
+                    try {
+                        if (player.embed) {
+                            if (typeof player.embed.mute === 'function') player.embed.mute();
+                            if (typeof player.embed.seekTo === 'function') player.embed.seekTo(0.1, true);
+                            if (typeof player.embed.playVideo === 'function') player.embed.playVideo();
+                        }
+                    } catch (e) {}
+                    attemptPlay();
+                } else {
+                    clearStuckRetryTimer();
+                    console.warn("[Autoplay Watchdog] Max retries reached.");
+                    window.parent.postMessage({ event: '4ANIMO_FATAL_ERROR', code: 'AUTOPLAY_TIMEOUT', videoId: videoId }, '*');
+                }
+            }, 2000);
+        }
+
+        function bindYTListeners() {
+            try {
+                const yt = player.embed;
+                if (!yt || typeof yt.addEventListener !== 'function') return;
+
+                if (yt._hasAnovaListeners) return;
+                yt._hasAnovaListeners = true;
+
+                yt.addEventListener('onStateChange', (event) => {
+                    const state = event.data;
+
+                    // YT.PlayerState: PLAYING (1), PAUSED (2), BUFFERING (3), CUED (5), UNSTARTED (-1), ENDED (0)
+                    if (state === 1) { // PLAYING
+                        clearStuckRetryTimer();
+                        setTimeout(() => {
+                            const currentState = (player.embed && typeof player.embed.getPlayerState === 'function') ? player.embed.getPlayerState() : -1;
+                            if (currentState === 1) {
+                                setPlayingState(true);
+                            }
+                        }, 150);
+
+                        window.parent.postMessage({ event: 'playing', videoId: videoId, currentTime: player.currentTime }, '*');
+
+                        // Attempt restoring audio after 800ms
+                        setTimeout(() => {
+                            try {
+                                if (player.embed && typeof player.embed.unMute === 'function') {
+                                    player.embed.unMute();
+                                }
+                                player.muted = false;
+                            } catch (e) {}
+
+                            // If unmuting caused a pause (browser policy restriction), re-mute & resume
+                            if (player.paused || (player.embed && typeof player.embed.getPlayerState === 'function' && player.embed.getPlayerState() === 2)) {
+                                setPlayingState(false);
+                                try {
+                                    if (player.embed && typeof player.embed.mute === 'function') {
+                                        player.embed.mute();
+                                    }
+                                } catch (e) {}
+                                player.muted = true;
+                                if (player.embed && typeof player.embed.playVideo === 'function') {
+                                    player.embed.playVideo();
+                                } else {
+                                    player.play().catch(() => {});
+                                }
+                            }
+                        }, 800);
+
+                    } else if (state === 3) { // BUFFERING
+                        if (player.currentTime > 0) {
+                            // Keep playing state if mid-stream buffering
+                        } else {
+                            setPlayingState(false);
+                        }
+                    } else if (state === 2 || state === 0 || state === 5 || state === -1) { // PAUSED, ENDED, CUED, UNSTARTED
+                        setPlayingState(false);
+                        if ((state === 5 || state === -1) && autoplay && (!player.playing || player.currentTime === 0)) {
+                            executeAutoplay();
+                        }
+                    }
+                });
+
+                yt.addEventListener('onError', (errEvent) => {
+                    clearStuckRetryTimer();
+                    console.log("YouTube API Embed Error Code:", errEvent.data);
+                    setPlayingState(false);
+                    const container = player.elements.container;
+                    if (container) {
+                        container.classList.add('has-error');
+                    }
+                    window.parent.postMessage({ event: '4ANIMO_FATAL_ERROR', code: errEvent.data, videoId: videoId }, '*');
+                });
+            } catch (err) {
+                console.warn("Could not attach direct YT listeners:", err);
+            }
+        }
+
+        function ensureYTReadyAndBind(callback) {
+            let attempts = 0;
+            const interval = setInterval(() => {
+                attempts++;
+                if (player.embed && typeof player.embed.addEventListener === 'function') {
+                    clearInterval(interval);
+                    bindYTListeners();
+                    if (callback) callback();
+                } else if (attempts >= 30) {
+                    clearInterval(interval);
+                    if (callback) callback();
+                }
+            }, 100);
+        }
+
+        // Add event listeners to propagate events to parent window
+        player.on('ready', (event) => {
+            window.parent.postMessage({ event: 'ready', videoId: videoId }, '*');
+            
+            // Set initial poster image
+            if (videoId) {
+                updatePoster(videoId);
+            }
+
+            // Ensure YouTube API instance is ready before binding and triggering autoplay
+            ensureYTReadyAndBind(() => {
+                if (autoplay) {
+                    executeAutoplay();
+                }
+            });
+
+            function updateOverlaidIcon(isPlaying) {
+                const overlaidBtn = document.querySelector('.plyr__control--overlaid');
+                if (overlaidBtn) {
+                    const useEl = overlaidBtn.querySelector('svg use');
+                    if (useEl) {
+                        useEl.setAttribute('xlink:href', isPlaying ? '#plyr-pause' : '#plyr-play');
+                    }
+                    overlaidBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+                }
+            }
+
+            // Bind click listener on wrapper to support click-to-play anywhere on screen
+            const wrapper = document.querySelector('.plyr__video-wrapper') || (player.elements && player.elements.wrapper);
+            if (wrapper) {
+                wrapper.style.cursor = 'pointer';
+                wrapper.addEventListener('click', (e) => {
+                    if (e.target.closest('.plyr__controls') || e.target.closest('.plyr__control--overlaid')) {
+                        return;
+                    }
+                    if (player.playing) {
+                        player.pause();
+                    } else {
+                        player.play();
+                    }
+                });
+            }
+
+            const overlaidBtn = document.querySelector('.plyr__control--overlaid');
+            if (overlaidBtn) {
+                overlaidBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (player.playing) {
+                        player.pause();
+                    } else {
+                        player.play();
+                    }
+                });
+            }
+        });
+
+        player.on('play', () => {
+            const overlaidBtn = document.querySelector('.plyr__control--overlaid');
+            if (overlaidBtn) {
+                const useEl = overlaidBtn.querySelector('svg use');
+                if (useEl) useEl.setAttribute('xlink:href', '#plyr-pause');
+            }
+        });
+
+        player.on('playing', (event) => {
+            clearStuckRetryTimer();
+            const overlaidBtn = document.querySelector('.plyr__control--overlaid');
+            if (overlaidBtn) {
+                const useEl = overlaidBtn.querySelector('svg use');
+                if (useEl) useEl.setAttribute('xlink:href', '#plyr-pause');
+            }
+            const ytState = (player.embed && typeof player.embed.getPlayerState === 'function') ? player.embed.getPlayerState() : -1;
+            if (ytState === 1 && player.currentTime > 0) {
+                setPlayingState(true);
+            }
+            window.parent.postMessage({ event: 'playing', videoId: videoId, currentTime: player.currentTime }, '*');
+        });
+
+        player.on('pause', (event) => {
+            setPlayingState(false);
+            const overlaidBtn = document.querySelector('.plyr__control--overlaid');
+            if (overlaidBtn) {
+                const useEl = overlaidBtn.querySelector('svg use');
+                if (useEl) useEl.setAttribute('xlink:href', '#plyr-play');
+            }
+            window.parent.postMessage({ event: 'paused', videoId: videoId, currentTime: player.currentTime }, '*');
+        });
+
+        player.on('error', () => {
+            clearStuckRetryTimer();
+            setPlayingState(false);
+            const container = player.elements.container;
+            if (container) {
+                container.classList.add('has-error');
+            }
+        });
+
+        player.on('ended', (event) => {
+            clearStuckRetryTimer();
+            setPlayingState(false);
+            window.parent.postMessage({ event: 'ended', videoId: videoId }, '*');
+        });
+
+        player.on('timeupdate', (event) => {
+            if (player.currentTime > 0) {
+                clearStuckRetryTimer();
+                const ytState = (player.embed && typeof player.embed.getPlayerState === 'function') ? player.embed.getPlayerState() : -1;
+                if (player.playing || ytState === 1) {
+                    setPlayingState(true);
+                }
+            }
+            window.parent.postMessage({ event: 'timeupdate', videoId: videoId, currentTime: player.currentTime, duration: player.duration }, '*');
+        });
+
+        // Direct click handler on Plyr's small bottom fullscreen button (Button 1)
+        document.addEventListener('click', (e) => {
+            const fsBtn = e.target.closest('[data-plyr="fullscreen"], .plyr__control[data-plyr="fullscreen"], button[aria-label*="fullscreen"], button[aria-label*="Fullscreen"]');
+            if (fsBtn) {
+                try {
+                    window.parent.postMessage({ event: 'toggle_fullscreen_button_clicked' }, '*');
+                } catch (e) {}
+            }
+        }, true);
+
+        // Handle fullscreen changes to maintain the crop hack and hide YouTube branding
+        player.on('enterfullscreen', (event) => {
+            const iframe = document.querySelector('.plyr__video-wrapper iframe, .plyr__video-embed iframe, .plyr iframe');
+            if (iframe) {
+                // Keep the top/height scale during full screen so the logo remains hidden
+                iframe.style.top = '-50%';
+                iframe.style.height = '200%';
+                iframe.style.width = '100%';
+                iframe.style.left = '0';
+                iframe.style.position = 'absolute';
+            }
+            try {
+                window.parent.postMessage({ event: 'toggle_fullscreen_button_clicked' }, '*');
+            } catch (e) {}
+        });
+
+        player.on('exitfullscreen', (event) => {
+            const iframe = document.querySelector('.plyr__video-wrapper iframe, .plyr__video-embed iframe, .plyr iframe');
+            if (iframe) {
+                iframe.style.top = '-50%';
+                iframe.style.height = '200%';
+                iframe.style.width = '';
+                iframe.style.left = '';
+                iframe.style.position = '';
+            }
+            try {
+                window.parent.postMessage({ event: 'toggle_fullscreen_button_clicked' }, '*');
+            } catch (e) {}
+        });
+
+        // Helper to extract video ID and load it dynamically
+        function loadVideo(id) {
+            if (id) {
+                clearStuckRetryTimer();
+                videoId = id;
+                setPlayingState(false);
+                const container = player.elements.container;
+                if (container) {
+                    container.classList.remove('has-played');
+                    container.classList.remove('has-error');
+                }
+                updatePoster(id);
+                player.source = {
+                    type: 'video',
+                    sources: [
+                        {
+                            src: id,
+                            provider: 'youtube',
+                        },
+                    ],
+                };
+                ensureYTReadyAndBind(() => {
+                    if (autoplay) {
+                        executeAutoplay();
+                    }
+                });
+            }
+        }
+
+        // Listen for message instructions from the parent React window
+        window.addEventListener('message', (e) => {
+            const data = e.data;
+            if (!data) return;
+
+            if (data.command === 'play') {
+                player.play();
+            } else if (data.command === 'pause') {
+                player.pause();
+            } else if (data.command === 'load' && data.id) {
+                loadVideo(data.id);
+            }
+        });
+    </script>
+</body>
+
+</html>
